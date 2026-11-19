@@ -19,6 +19,7 @@ const SCREEN_INTERFACE = `
 </node>`;
 
 const BrightnessProxy = Gio.DBusProxy.makeProxyWrapper(SCREEN_INTERFACE);
+const BrightnessIcon = Gio.Icon.new_for_string('display-brightness-symbolic');
 
 export class BrightnessManager {
     constructor() {
@@ -75,15 +76,14 @@ export class BrightnessManager {
     }
 
     _showOsd(brightness) {
-        const icon = Gio.Icon.new_for_string('display-brightness-symbolic');
         const level = Math.max(0, Math.min(1.0, brightness / 100));
 
-        showOsd(icon, null, level, 1.0);
+        showOsd(BrightnessIcon, null, level, 1.0);
         resetOsdLevelTransitions(level);
     }
 
     adjust(deltaPercent) {
-        if (!this._nativeScale && !this._proxy) return;
+        if (!this._nativeScale && !(this._proxy?.Brightness >= 0)) return;
 
         if (this._settleTimeoutId) {
             GLib.source_remove(this._settleTimeoutId);
@@ -115,6 +115,9 @@ export class BrightnessManager {
     }
 
     finish() {
+        if (!this._inGesture)
+            return;
+
         if (this._pushTimeoutId) {
             GLib.source_remove(this._pushTimeoutId);
             this._pushTimeoutId = 0;

@@ -1,5 +1,4 @@
 import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
@@ -15,40 +14,25 @@ import { AltTabManager } from './altTab.js';
 import { NativeGestureTracker } from './nativeGestureTracker.js';
 import { showOsd } from './osd.js';
 
-// Unified Action Enum matching schema
-export const Action = {
-    NONE: 0,
-    OVERVIEW: 1,
-    APP_GRID: 2,
-    WORKSPACE_NEXT: 3,
-    WORKSPACE_PREV: 4,
-    WINDOW_SWITCHING: 5,
-    CLOSE_WINDOW: 6,
-    MAXIMIZE_WINDOW: 7,
-    MINIMIZE_WINDOW: 8,
-    SNAP_LEFT: 9,
-    SNAP_RIGHT: 10,
-    SHOW_DESKTOP: 11,
-    SHOW_NOTIFICATIONS: 12,
-    SHOW_QUICK_SETTINGS: 13,
-    SCREENSHOT_FULL: 14,
-    SCREENSHOT_UI: 15,
-    VOLUME_UP: 16,
-    VOLUME_DOWN: 17,
-    VOLUME_CONTROL: 18,
-    BRIGHTNESS_UP: 19,
-    BRIGHTNESS_DOWN: 20,
-    BRIGHTNESS_CONTROL: 21,
-    TAB_NEXT: 22,
-    TAB_PREV: 23,
-    TAB_NEW: 24,
-    TAB_CLOSE: 25,
-    LAUNCH_TERMINAL: 26,
-};
+import { Action, resolveAdjustmentAction } from './actions.js';
 
 const SWIPE_THRESHOLD = 32;
+const AXIS_LOCK_DISTANCE = 18;
+const CONTINUOUS_AXIS_LOCK_DISTANCE = 6;
 const PINCH_IN_THRESHOLD = 0.93;
 const PINCH_OUT_THRESHOLD = 1.07;
+
+function isVolumeSwipe(action) {
+    return action === Action.VOLUME_UP || action === Action.VOLUME_DOWN;
+}
+
+function isBrightnessSwipe(action) {
+    return action === Action.BRIGHTNESS_UP || action === Action.BRIGHTNESS_DOWN;
+}
+
+function isContinuousSwipe(action) {
+    return isVolumeSwipe(action) || isBrightnessSwipe(action);
+}
 
 export class GestureEngine {
     constructor(settings) {
@@ -62,6 +46,8 @@ export class GestureEngine {
         this._nativeTracker = new NativeGestureTracker(settings);
 
         this._stageEventId = 0;
+        this._buttonEventId = 0;
+        this._handledButtons = new Set();
 
         // Swipe tracking state
         this._cumDx = 0;
@@ -69,6 +55,9 @@ export class GestureEngine {
         this._dominantAxis = null;
         this._swipeFingers = 0;
         this._swipeAction = Action.NONE;
+        this._swipeSensitivity = 1;
+        this._continuousSpeed = 1;
+        this._swipeDirection = 0;
 
         // Pinch tracking state
         this._pinchGesture = null;
@@ -85,6 +74,9 @@ export class GestureEngine {
             this._stageEventId = global.stage.connect('captured-event::touchpad', (_actor, event) => {
                 return this._handleTouchpadEvent(event);
             });
+            this._buttonEventId = global.stage.connect('captured-event::button', (_actor, event) => {
+                return this._handleClickEvent(event);
+            });
         }
     }
 
@@ -98,8 +90,6 @@ export class GestureEngine {
             return this._handleSwipeEvent(event);
         } else if (type === Clutter.EventType.TOUCHPAD_PINCH) {
             return this._handlePinchEvent(event);
-        } else if (type === Clutter.EventType.BUTTON_PRESS) {
-            return this._handleButtonPress(event);
         }
 
         return Clutter.EVENT_PROPAGATE;
@@ -108,8 +98,15 @@ export class GestureEngine {
     // ==========================================
     // MULTI-FINGER CLICK / TAP
     // ==========================================
-    _handleButtonPress(event) {
+    _handleClickEvent(event) {
+        if (Main.sessionMode?.isLocked ||
+            event.get_source_device()?.get_device_type() !== Clutter.InputDeviceType.TOUCHPAD_DEVICE)
+            return Clutter.EVENT_PROPAGATE;
+
         const button = event.get_button();
+        if (event.type() === Clutter.EventType.BUTTON_RELEASE)
+            return this._handledButtons.delete(button) ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+
         let action = Action.NONE;
 
         if (button === 3) {
@@ -118,13 +115,10 @@ export class GestureEngine {
         } else if (button === 2) {
             // 3-finger click / middle-click
             action = this._settings.get_enum('click-3fg');
-        } else if (button === 8 || button === 9) {
-            // 4-finger click
-            action = this._settings.get_enum('click-4fg');
         }
 
-        if (action !== Action.NONE) {
-            this._executeAction(action);
+        if (this._executeAction(action)) {
+            this._handledButtons.add(button);
             return Clutter.EVENT_STOP;
         }
 
@@ -144,7 +138,7 @@ export class GestureEngine {
             key = dx < 0 ? `swipe-${fingers}fg-left` : `swipe-${fingers}fg-right`;
         }
 
-        const action = this._settings.get_enum(key);
+        const action = resolveAdjustmentAction(this._settings.get_enum(key), isVertical ? dy < 0 : dx > 0);
 
         if (fingers === 3 && !isVertical && this._nativeTracker.handlesWorkspaceSwipe()) {
             return Action.NONE;
@@ -153,7 +147,7 @@ export class GestureEngine {
         // Let GNOME handle its own three-finger opening animation when its tracker is available.
         if (fingers === 3 && action === Action.OVERVIEW && isVertical && dy < 0 &&
             this._nativeTracker.handlesOverviewSwipe() &&
-            !Main.overview?.visible && !this._hasDesktopMinimizedWindows()) {
+            !Main.overview?.visible && this._getDesktopMinimizedWindows().length === 0) {
             return Action.NONE;
         }
 
@@ -170,10 +164,9 @@ export class GestureEngine {
             this._dominantAxis = null;
             this._swipeFingers = fingers;
             this._swipeAction = Action.NONE;
+            if (fingers === 3 || fingers === 4)
+                this._swipeSensitivity = this._settings.get_double('swipe-sensitivity') || 1.0;
 
-            if (fingers !== 3 && fingers !== 4) {
-                return Clutter.EVENT_PROPAGATE;
-            }
             return Clutter.EVENT_PROPAGATE;
         }
 
@@ -183,22 +176,39 @@ export class GestureEngine {
             }
 
             const [dx, dy] = event.get_gesture_motion_delta();
-            const sensitivity = this._settings.get_double('swipe-sensitivity') || 1.0;
+            const sensitivity = this._swipeSensitivity;
 
             this._cumDx += dx * sensitivity;
             this._cumDy += dy * sensitivity;
 
             if (!this._dominantAxis) {
                 const totalDist = Math.hypot(this._cumDx, this._cumDy);
-                if (totalDist >= 18) {
+                if (totalDist >= CONTINUOUS_AXIS_LOCK_DISTANCE) {
                     const absX = Math.abs(this._cumDx);
                     const absY = Math.abs(this._cumDy);
                     const isVert = absY > absX;
                     const ratio = isVert ? absY / Math.max(1, absX) : absX / Math.max(1, absY);
+                    const action = this._getSwipeAction(this._swipeFingers, isVert, this._cumDy, this._cumDx);
+                    const continuous = isContinuousSwipe(action);
+                    const lockDistance = continuous ? CONTINUOUS_AXIS_LOCK_DISTANCE : AXIS_LOCK_DISTANCE;
+                    const forceLockDistance = continuous ? 12 : 28;
 
-                    if (ratio > 1.2 || totalDist >= 28) {
+                    if (totalDist >= lockDistance && (ratio > 1.2 || totalDist >= forceLockDistance)) {
                         this._dominantAxis = isVert ? 'vertical' : 'horizontal';
-                        this._swipeAction = this._getSwipeAction(this._swipeFingers, isVert, this._cumDy, this._cumDx);
+                        this._swipeAction = action;
+                        this._swipeDirection = Math.sign(isVert ? this._cumDy : this._cumDx);
+                        if (continuous) {
+                            const speedKey = isVolumeSwipe(action) ? 'volume-speed' : 'brightness-speed';
+                            const speed = this._settings.get_double(speedKey) || 1.0;
+                            const increases = action === Action.VOLUME_UP || action === Action.BRIGHTNESS_UP;
+                            this._continuousSpeed = speed * this._swipeDirection * (increases ? 1 : -1);
+                            return this._handleSwipeUpdate(this._cumDx / sensitivity, this._cumDy / sensitivity);
+                        }
+
+                        if (action === Action.SNAP_LEFT || action === Action.SNAP_RIGHT) {
+                            this._windowTiling.showPreviewForAction(action === Action.SNAP_LEFT ? 'left' : 'right',
+                                global.display.get_focus_window());
+                        }
                     }
                 }
             }
@@ -212,6 +222,8 @@ export class GestureEngine {
         if (phase === Clutter.TouchpadGesturePhase.END) {
             if (this._dominantAxis && this._swipeAction !== Action.NONE) {
                 const consumed = this._handleSwipeEnd();
+                if (!consumed)
+                    this._windowTiling.hidePreview();
                 this._resetSwipeState();
                 return consumed ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
             }
@@ -234,22 +246,19 @@ export class GestureEngine {
     _handleSwipeUpdate(dx, dy) {
         const isVertical = this._dominantAxis === 'vertical';
 
-        if (this._swipeAction === Action.VOLUME_CONTROL) {
-            const speed = this._settings.get_double('volume-speed') || 1.0;
-            const delta = isVertical ? -dy : dx;
-            this._volume.adjust(delta * 0.003 * speed);
+        if (isVolumeSwipe(this._swipeAction)) {
+            const delta = isVertical ? dy : dx;
+            this._volume.adjust(delta * 0.003 * this._continuousSpeed);
             return Clutter.EVENT_STOP;
         }
 
-        if (this._swipeAction === Action.BRIGHTNESS_CONTROL) {
-            const speed = this._settings.get_double('brightness-speed') || 1.0;
-            const delta = isVertical ? -dy : dx;
-            this._brightness.adjust(delta * 0.18 * speed);
+        if (isBrightnessSwipe(this._swipeAction)) {
+            const delta = isVertical ? dy : dx;
+            this._brightness.adjust(delta * 0.18 * this._continuousSpeed);
             return Clutter.EVENT_STOP;
         }
 
         if (this._swipeAction === Action.WINDOW_SWITCHING) {
-            const sensitivity = this._settings.get_double('swipe-sensitivity') || 1.0;
             const distance = isVertical ? 300 : 400;
 
             if (!this._altTab.isGestureActive()) {
@@ -260,7 +269,7 @@ export class GestureEngine {
                 return Clutter.EVENT_STOP;
             }
 
-            const delta = (isVertical ? dy : dx) * sensitivity;
+            const delta = (isVertical ? dy : dx) * this._swipeSensitivity;
             this._altTab.updateGesture(delta, distance);
             return Clutter.EVENT_STOP;
         }
@@ -271,13 +280,14 @@ export class GestureEngine {
     _handleSwipeEnd() {
         if (!this._dominantAxis || this._swipeAction === Action.NONE) return false;
 
-        if (this._swipeAction === Action.VOLUME_CONTROL || this._swipeAction === Action.BRIGHTNESS_CONTROL)
+        if (isContinuousSwipe(this._swipeAction))
             return true;
 
         const isVertical = this._dominantAxis === 'vertical';
-        const dist = isVertical ? Math.abs(this._cumDy) : Math.abs(this._cumDx);
-
-        if (dist >= SWIPE_THRESHOLD) {
+        const isTiling = this._swipeAction === Action.SNAP_LEFT || this._swipeAction === Action.SNAP_RIGHT;
+        const delta = isVertical ? this._cumDy : this._cumDx;
+        const dist = this._swipeAction === Action.WINDOW_SWITCHING ? Math.abs(delta) : delta * this._swipeDirection;
+        if (dist >= (isTiling ? AXIS_LOCK_DISTANCE : SWIPE_THRESHOLD)) {
             if (this._swipeAction === Action.WINDOW_SWITCHING && this._altTab.isGestureActive()) {
                 this._altTab.endGesture();
                 return true;
@@ -289,9 +299,9 @@ export class GestureEngine {
     }
 
     _resetSwipeState() {
-        if (this._swipeAction === Action.VOLUME_CONTROL) {
+        if (isVolumeSwipe(this._swipeAction)) {
             this._volume?.finish();
-        } else if (this._swipeAction === Action.BRIGHTNESS_CONTROL) {
+        } else if (isBrightnessSwipe(this._swipeAction)) {
             this._brightness?.finish();
         } else if (this._swipeAction === Action.WINDOW_SWITCHING) {
             if (this._altTab?.isGestureActive()) {
@@ -363,28 +373,16 @@ export class GestureEngine {
     _executeAction(action) {
         if (!action || action === Action.NONE) return false;
 
-        const activeWs = global.workspace_manager.get_active_workspace();
-        const wsWindows = activeWs.list_windows().filter(w => !w.skip_taskbar && w.get_window_type() === Meta.WindowType.NORMAL);
-        const window = this._focusWindow || global.display.get_focus_window() || wsWindows.find(w => !w.minimized) || wsWindows[0];
-
         switch (action) {
             case Action.OVERVIEW:
                 Main.overview.toggle();
                 return true;
 
             case Action.APP_GRID: {
-                if (Main.overview.visible) {
-                    const controls = Main.overview?._overview?.controls;
-                    if (controls && typeof controls._shiftState === 'function') {
-                        controls._shiftState(Meta.MotionDirection.UP);
-                    }
-                } else {
-                    Main.overview.show();
-                    const controls = Main.overview?._overview?.controls;
-                    if (controls && typeof controls._shiftState === 'function') {
-                        controls._shiftState(Meta.MotionDirection.UP);
-                    }
-                }
+                if (Main.overview.visible)
+                    Main.overview?._overview?.controls?._shiftState?.(Meta.MotionDirection.UP);
+                else
+                    Main.overview.showApps();
                 return true;
             }
 
@@ -400,35 +398,28 @@ export class GestureEngine {
                 this._keyboard.sendKeyCombination([Clutter.KEY_Alt_L, Clutter.KEY_Tab]);
                 return true;
 
-            case Action.CLOSE_WINDOW:
+            case Action.CLOSE_WINDOW: {
+                const window = this._focusWindow ?? global.display.get_focus_window();
                 if (window) {
                     window.delete(global.get_current_time());
-                    this._showPinchOsd('window-close-symbolic', 'Window Closed');
                 }
                 return true;
+            }
 
             case Action.MAXIMIZE_WINDOW:
-                if (window) {
-                    this._windowTiling.handleSwipeUp(true);
-                }
+                this._windowTiling.handleSwipeUp(this._settings.get_boolean('allow-fullscreen'));
                 return true;
 
             case Action.MINIMIZE_WINDOW:
-                if (window) {
-                    this._windowTiling.handleSwipeDown(true);
-                }
+                this._windowTiling.handleSwipeDown(this._settings.get_boolean('allow-minimize'));
                 return true;
 
             case Action.SNAP_LEFT:
-                if (window) {
-                    this._windowTiling.handleSwipeLeft();
-                }
+                this._windowTiling.handleSwipeLeft();
                 return true;
 
             case Action.SNAP_RIGHT:
-                if (window) {
-                    this._windowTiling.handleSwipeRight();
-                }
+                this._windowTiling.handleSwipeRight();
                 return true;
 
             case Action.SHOW_DESKTOP:
@@ -453,26 +444,32 @@ export class GestureEngine {
 
             case Action.VOLUME_UP:
                 this._volume.adjust(0.05);
+                this._volume.finish();
                 return true;
 
             case Action.VOLUME_DOWN:
                 this._volume.adjust(-0.05);
+                this._volume.finish();
                 return true;
 
             case Action.VOLUME_CONTROL:
                 this._volume.adjust(0.02);
+                this._volume.finish();
                 return true;
 
             case Action.BRIGHTNESS_UP:
-                this._brightness.adjust(0.08);
+                this._brightness.adjust(8);
+                this._brightness.finish();
                 return true;
 
             case Action.BRIGHTNESS_DOWN:
-                this._brightness.adjust(-0.08);
+                this._brightness.adjust(-8);
+                this._brightness.finish();
                 return true;
 
             case Action.BRIGHTNESS_CONTROL:
-                this._brightness.adjust(0.05);
+                this._brightness.adjust(5);
+                this._brightness.finish();
                 return true;
 
             case Action.TAB_NEXT:
@@ -497,9 +494,18 @@ export class GestureEngine {
                 const term = GLib.find_program_in_path('ptyxis') ||
                              GLib.find_program_in_path('gnome-terminal') ||
                              GLib.find_program_in_path('kgx') ||
-                             'x-terminal-emulator';
-                GLib.spawn_command_line_async(term);
-                this._showPinchOsd('utilities-terminal-symbolic', 'Terminal Launched');
+                             GLib.find_program_in_path('x-terminal-emulator');
+                try {
+                    if (term) {
+                        GLib.spawn_async(null, [term], null, GLib.SpawnFlags.DEFAULT, null);
+                        this._showPinchOsd('utilities-terminal-symbolic', 'Terminal Launched');
+                    } else {
+                        this._showPinchOsd('utilities-terminal-symbolic', 'No Terminal Found');
+                    }
+                } catch (error) {
+                    console.warn('[TouchpadGestures] Could not launch terminal:', error);
+                    this._showPinchOsd('utilities-terminal-symbolic', 'Could Not Launch Terminal');
+                }
                 return true;
             }
 
@@ -512,7 +518,7 @@ export class GestureEngine {
         try {
             const shooter = new Shell.Screenshot();
             shooter.screenshot_stage_to_content().then(([content]) => {
-                captureScreenshot(content.get_texture(), null, 1, null);
+                return captureScreenshot(content.get_texture(), null, 1, null);
             }).catch(_err => {
                 this._keyboard.sendKeyCombination([Clutter.KEY_Shift_L, 0xff61]);
             });
@@ -540,75 +546,48 @@ export class GestureEngine {
     // ==========================================
     // SHOW DESKTOP
     // ==========================================
-    _hasDesktopMinimizedWindows() {
-        if (this._desktopMinimizedWindows.size === 0) return false;
+    _getDesktopMinimizedWindows() {
+        const windows = [];
+        if (this._desktopMinimizedWindows.size === 0)
+            return windows;
+
         const activeWs = global.workspace_manager.get_active_workspace();
         for (const win of this._desktopMinimizedWindows) {
-            try {
-                const ws = win.get_workspace ? win.get_workspace() : null;
-                const onThisWs = (ws === activeWs) || (win.is_on_all_workspaces && win.is_on_all_workspaces());
-                if (win && win.minimized && onThisWs) {
-                    return true;
-                }
-            } catch (_e) {
-                // Ignore destroyed or invalid window
-            }
+            const ws = win.get_workspace();
+            if (!ws || !win.minimized)
+                this._desktopMinimizedWindows.delete(win);
+            else if (ws === activeWs || win.is_on_all_workspaces())
+                windows.push(win);
         }
-        return false;
+        return windows;
     }
 
-    _toggleShowDesktop(forceMinimize = null) {
-        const activeWs = global.workspace_manager.get_active_workspace();
-        const windows = activeWs.list_windows().filter(w => !w.skip_taskbar && w.get_window_type() === Meta.WindowType.NORMAL);
-
-        let shouldMinimize;
-        if (forceMinimize !== null) {
-            shouldMinimize = forceMinimize;
-        } else {
-            shouldMinimize = windows.some(w => !w.minimized);
-        }
-
-        if (shouldMinimize) {
-            const toMinimize = windows.filter(w => w.can_minimize() && !w.minimized);
-            if (toMinimize.length === 0) return;
-
-            this._desktopMinimizedWindows.clear();
-            for (const win of toMinimize) {
-                this._desktopMinimizedWindows.add(win);
-                win.minimize();
-            }
-            if (Main.overview?.visible) {
-                Main.overview.hide();
-            }
-            this._showPinchOsd('preferences-desktop-display-symbolic', 'Desktop Shown');
-        } else {
-            const toRestore = this._desktopMinimizedWindows.size > 0
-                ? Array.from(this._desktopMinimizedWindows)
-                : windows.filter(w => w.minimized);
-
-            if (toRestore.length === 0) return;
-
-            let lastWin = null;
+    _toggleShowDesktop() {
+        const toRestore = this._getDesktopMinimizedWindows();
+        if (toRestore.length > 0) {
             for (const win of toRestore) {
-                try {
-                    const ws = win.get_workspace ? win.get_workspace() : null;
-                    const onThisWs = (ws === activeWs) || (win.is_on_all_workspaces && win.is_on_all_workspaces());
-                    if (win && win.minimized && onThisWs) {
-                        win.unminimize();
-                        lastWin = win;
-                    }
-                } catch (_e) {
-                    // Ignore destroyed or invalid window
-                }
+                this._desktopMinimizedWindows.delete(win);
+                win.unminimize();
             }
-            if (lastWin) {
-                try {
-                    lastWin.activate(global.get_current_time());
-                } catch (_e) {}
-            }
-            this._desktopMinimizedWindows.clear();
+            toRestore.at(-1).activate(global.get_current_time());
             this._showPinchOsd('preferences-desktop-display-symbolic', 'Windows Restored');
+            return;
         }
+
+        const activeWs = global.workspace_manager.get_active_workspace();
+        const toMinimize = activeWs.list_windows().filter(win =>
+            !win.skip_taskbar && !win.minimized &&
+            win.get_window_type() === Meta.WindowType.NORMAL && win.can_minimize());
+        if (toMinimize.length === 0)
+            return;
+
+        for (const win of toMinimize) {
+            this._desktopMinimizedWindows.add(win);
+            win.minimize();
+        }
+        if (Main.overview?.visible)
+            Main.overview.hide();
+        this._showPinchOsd('preferences-desktop-display-symbolic', 'Desktop Shown');
     }
 
     destroy() {
@@ -616,6 +595,11 @@ export class GestureEngine {
             global.stage.disconnect(this._stageEventId);
             this._stageEventId = 0;
         }
+        if (this._buttonEventId) {
+            global.stage.disconnect(this._buttonEventId);
+            this._buttonEventId = 0;
+        }
+        this._handledButtons.clear();
 
         this._nativeTracker?.destroy();
         this._volume?.destroy();

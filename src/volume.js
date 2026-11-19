@@ -10,7 +10,7 @@ const VolumeIcons = [
     'audio-volume-medium-symbolic',
     'audio-volume-high-symbolic',
     'audio-volume-overamplified-symbolic',
-];
+].map(name => Gio.Icon.new_for_string(name));
 
 export class VolumeManager {
     constructor() {
@@ -39,8 +39,7 @@ export class VolumeManager {
         return (norm && norm > 0) ? norm : 65536;
     }
 
-    _showOsd(volume) {
-        const maxNorm = this._getMaxNorm();
+    _showOsd(volume, maxNorm, maxAllowed) {
         const level = volume / maxNorm;
         let iconIdx;
 
@@ -52,13 +51,7 @@ export class VolumeManager {
             iconIdx = Math.max(1, Math.min(3, Math.floor(3 * level + 1)));
         }
 
-        const icon = Gio.Icon.new_for_string(VolumeIcons[iconIdx]);
-        const isOveramp = this._soundSettings.get_boolean('allow-volume-above-100-percent');
-        const maxRatio = (isOveramp && this._controller)
-            ? (this._controller.get_vol_max_amplified() / maxNorm)
-            : 1.0;
-
-        showOsd(icon, null, level, maxRatio);
+        showOsd(VolumeIcons[iconIdx], null, level, maxAllowed / maxNorm);
         resetOsdLevelTransitions(level);
     }
 
@@ -92,7 +85,7 @@ export class VolumeManager {
         }
 
         // Instant visual feedback at full display refresh rate
-        this._showOsd(this._targetVolume);
+        this._showOsd(this._targetVolume, maxNorm, maxAllowed);
 
         // Throttle pushing volume to audio daemon (PulseAudio/PipeWire) to avoid event queue contention
         this._sink.volume = newVol;
@@ -108,6 +101,9 @@ export class VolumeManager {
     }
 
     finish() {
+        if (!this._inGesture)
+            return;
+
         if (this._pushTimeoutId) {
             GLib.source_remove(this._pushTimeoutId);
             this._pushTimeoutId = 0;

@@ -86,11 +86,6 @@
       <default>'screenshot-ui'</default>
       <summary>Action for 4-finger pinch out</summary>
     </key>
-    <key name="click-4fg" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
-      <default>'show-quick-settings'</default>
-      <summary>Action for 4-finger tap or click</summary>
-    </key>
-
     <!-- 2-Finger Gestures -->
     <key name="pinch-2fg-in" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
       <default>'none'</default>

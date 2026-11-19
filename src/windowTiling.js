@@ -148,6 +148,8 @@ export class WindowTilingManager {
 
         const halfWidth = Math.floor(workArea.width / 2);
         window.move_to_monitor(monitor);
+        // Some Wayland clients resize without moving unless the move is requested first.
+        window.move_frame(true, workArea.x, workArea.y);
         window.move_resize_frame(true, workArea.x, workArea.y, halfWidth, workArea.height);
         this._showOsd('view-restore-symbolic', 'Snapped Left');
         this.hidePreview();
@@ -178,6 +180,7 @@ export class WindowTilingManager {
         const rightW = workArea.width - halfWidth;
 
         window.move_to_monitor(monitor);
+        window.move_frame(true, rightX, workArea.y);
         window.move_resize_frame(true, rightX, workArea.y, rightW, workArea.height);
         this._showOsd('view-restore-symbolic', 'Snapped Right');
         this.hidePreview();
