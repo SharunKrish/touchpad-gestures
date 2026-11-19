@@ -1,32 +1,28 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import Gtk from 'gi://Gtk';
 
 Adw.init();
-try {
-    Gio.Resource.load('/usr/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource')._register();
-} catch (_e) {}
+const resourceName = 'gnome-shell/org.gnome.Shell.Extensions.src.gresource';
+const resourcePath = GLib.get_system_data_dirs()
+    .map(dir => GLib.build_filenamev([dir, resourceName]))
+    .find(path => GLib.file_test(path, GLib.FileTest.IS_REGULAR));
+if (!resourcePath)
+    throw new Error('GNOME Shell’s preferences resources are required to run this preview.');
+
+Gio.resources_register(Gio.Resource.load(resourcePath));
+const {default: PrefsClass} = await import('./prefs.js');
+const extDir = Gio.File.new_for_uri(import.meta.url).get_parent();
 
 const app = new Adw.Application({
     application_id: 'io.github.sharunkrish.TouchpadGesturesPrefsTest',
-    flags: Gio.ApplicationFlags.FLAGS_NONE,
+    flags: Gio.ApplicationFlags.NON_UNIQUE,
 });
 
-app.connect('activate', async () => {
+let failed = false;
+app.connect('activate', () => {
     try {
-        const schemaSource = Gio.SettingsSchemaSource.new_from_directory(
-            GLib.build_filenamev([GLib.get_current_dir(), 'ubuntu', 'touchpad-gestures', 'schemas']),
-            Gio.SettingsSchemaSource.get_default(),
-            false
-        );
-        const schemaObj = schemaSource.lookup('org.gnome.shell.extensions.touchpad-gestures-pro', false);
-        const settings = new Gio.Settings({ settings_schema: schemaObj });
-
-        // Import prefs class
-        const prefsModule = await import('./prefs.js');
-        const PrefsClass = prefsModule.default;
-        const extDir = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_current_dir(), 'ubuntu', 'touchpad-gestures']));
+        const settings = new Gio.Settings({schema_id: 'org.gnome.shell.extensions.touchpad-gestures-pro'});
         const prefs = new PrefsClass({
             uuid: 'touchpad-gestures@sharunkrish.github.io',
             name: 'Touchpad Gestures Pro',
@@ -35,7 +31,6 @@ app.connect('activate', async () => {
             path: extDir.get_path(),
         });
 
-        // Stub getSettings
         prefs.getSettings = () => settings;
 
         const win = new Adw.PreferencesWindow({
@@ -49,9 +44,12 @@ app.connect('activate', async () => {
         win.present();
         console.log('PREFS_WINDOW_SHOWN');
     } catch (err) {
+        failed = true;
         console.error('Failed to launch prefs preview:', err);
         app.quit();
     }
 });
 
-app.run([]);
+const status = app.run([]);
+if (failed || status)
+    throw new Error('Preferences preview did not complete successfully.');
