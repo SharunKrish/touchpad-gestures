@@ -1,0 +1,17 @@
+{
+  "name": "Touchpad Gestures Pro",
+  "description": "Smooth, responsive, and customizable touchpad gestures for GNOME Shell on Wayland. Multi-finger swipes, responsive 2/3/4-finger pinches, window tiling, volume & brightness OSD, and browser tab controls.",
+  "uuid": "touchpad-gestures@sharunkrish.github.io",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://github.com/SharunKrish/touchpad-gestures",
+  "settings-schema": "org.gnome.shell.extensions.touchpad-gestures-pro",
+  "version": 1
+}

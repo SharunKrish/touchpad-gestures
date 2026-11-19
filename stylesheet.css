@@ -1,0 +1,76 @@
+/* Touchpad Gestures Pro - Styling */
+
+.touchpad-gesture-preview {
+    background-color: rgba(53, 132, 228, 0.20);
+    border: 2px solid rgba(53, 132, 228, 0.85);
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+/* Alt+Tab Native Switcher instant transition during gestures */
+.gie-alttab-quick-transition .switcher-popup,
+.gie-alttab-quick-transition .switcher-list,
+.gie-alttab-quick-transition.switcher-list,
+.gie-alttab-quick-transition .item-box {
+    transition-duration: 0ms !important;
+}
+
+/* Multi-App Preview Switcher HUD */
+.touchpad-app-switcher-popup {
+    background-color: rgba(26, 26, 32, 0.93);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 20px;
+    padding: 16px 20px 14px 20px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+}
+
+.touchpad-app-switcher-title {
+    font-size: 11pt;
+    font-weight: bold;
+    color: #ffffff;
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+.touchpad-app-switcher-list {
+    spacing: 10px;
+}
+
+.touchpad-app-switcher-item {
+    padding: 8px 10px;
+    border-radius: 12px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 2px solid transparent;
+    transition-duration: 100ms;
+}
+
+.touchpad-app-switcher-item.selected {
+    background-color: rgba(53, 132, 228, 0.30);
+    border-color: rgba(53, 132, 228, 0.95);
+    box-shadow: 0 4px 14px rgba(53, 132, 228, 0.40);
+}
+
+.touchpad-app-switcher-thumb-box {
+    border-radius: 6px;
+    background-color: rgba(0, 0, 0, 0.35);
+    margin-bottom: 6px;
+}
+
+.touchpad-app-switcher-subrow {
+    spacing: 6px;
+}
+
+.touchpad-app-switcher-item-icon {
+    margin-bottom: 4px;
+}
+
+.touchpad-app-switcher-item-label {
+    font-size: 9pt;
+    color: rgba(255, 255, 255, 0.78);
+    text-align: center;
+}
+
+.touchpad-app-switcher-item.selected .touchpad-app-switcher-item-label {
+    color: #ffffff;
+    font-weight: bold;
+}

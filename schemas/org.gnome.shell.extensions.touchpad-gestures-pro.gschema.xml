@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<schemalist>
+  <enum id="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+    <value value="0" nick="none" />
+    <value value="1" nick="overview" />
+    <value value="2" nick="app-grid" />
+    <value value="3" nick="workspace-next" />
+    <value value="4" nick="workspace-prev" />
+    <value value="5" nick="window-switching" />
+    <value value="6" nick="close-window" />
+    <value value="7" nick="maximize-window" />
+    <value value="8" nick="minimize-window" />
+    <value value="9" nick="snap-left" />
+    <value value="10" nick="snap-right" />
+    <value value="11" nick="show-desktop" />
+    <value value="12" nick="show-notifications" />
+    <value value="13" nick="show-quick-settings" />
+    <value value="14" nick="screenshot-full" />
+    <value value="15" nick="screenshot-ui" />
+    <value value="16" nick="volume-up" />
+    <value value="17" nick="volume-down" />
+    <value value="18" nick="volume-control" />
+    <value value="19" nick="brightness-up" />
+    <value value="20" nick="brightness-down" />
+    <value value="21" nick="brightness-control" />
+    <value value="22" nick="tab-next" />
+    <value value="23" nick="tab-prev" />
+    <value value="24" nick="tab-new" />
+    <value value="25" nick="tab-close" />
+    <value value="26" nick="launch-terminal" />
+  </enum>
+
+  <schema id="org.gnome.shell.extensions.touchpad-gestures-pro" path="/org/gnome/shell/extensions/touchpad-gestures-pro/">
+    <!-- 3-Finger Gestures -->
+    <key name="swipe-3fg-up" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'overview'</default>
+      <summary>Action for 3-finger swipe up</summary>
+    </key>
+    <key name="swipe-3fg-down" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'show-desktop'</default>
+      <summary>Action for 3-finger swipe down</summary>
+    </key>
+    <key name="swipe-3fg-left" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'workspace-next'</default>
+      <summary>Action for 3-finger swipe left</summary>
+    </key>
+    <key name="swipe-3fg-right" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'workspace-prev'</default>
+      <summary>Action for 3-finger swipe right</summary>
+    </key>
+    <key name="pinch-3fg-in" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'close-window'</default>
+      <summary>Action for 3-finger pinch in</summary>
+    </key>
+    <key name="pinch-3fg-out" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'launch-terminal'</default>
+      <summary>Action for 3-finger pinch out</summary>
+    </key>
+    <key name="click-3fg" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'none'</default>
+      <summary>Action for 3-finger tap or click</summary>
+    </key>
+
+    <!-- 4-Finger Gestures -->
+    <key name="swipe-4fg-up" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'brightness-up'</default>
+      <summary>Action for 4-finger swipe up</summary>
+    </key>
+    <key name="swipe-4fg-down" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'brightness-down'</default>
+      <summary>Action for 4-finger swipe down</summary>
+    </key>
+    <key name="swipe-4fg-left" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'volume-down'</default>
+      <summary>Action for 4-finger swipe left</summary>
+    </key>
+    <key name="swipe-4fg-right" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'volume-up'</default>
+      <summary>Action for 4-finger swipe right</summary>
+    </key>
+    <key name="pinch-4fg-in" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'screenshot-full'</default>
+      <summary>Action for 4-finger pinch in</summary>
+    </key>
+    <key name="pinch-4fg-out" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'screenshot-ui'</default>
+      <summary>Action for 4-finger pinch out</summary>
+    </key>
+    <key name="click-4fg" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'show-quick-settings'</default>
+      <summary>Action for 4-finger tap or click</summary>
+    </key>
+
+    <!-- 2-Finger Gestures -->
+    <key name="pinch-2fg-in" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'none'</default>
+      <summary>Action for 2-finger pinch in</summary>
+    </key>
+    <key name="pinch-2fg-out" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'none'</default>
+      <summary>Action for 2-finger pinch out</summary>
+    </key>
+    <key name="click-2fg" enum="org.gnome.shell.extensions.touchpad-gestures-pro.action">
+      <default>'none'</default>
+      <summary>Action for 2-finger tap or click</summary>
+    </key>
+
+    <!-- Sensitivity and Tuning -->
+    <key name="swipe-sensitivity" type="d">
+      <default>1.0</default>
+      <summary>Swipe speed / distance multiplier</summary>
+    </key>
+    <key name="pinch-sensitivity" type="d">
+      <default>1.0</default>
+      <summary>Pinch sensitivity multiplier</summary>
+    </key>
+    <key name="volume-speed" type="d">
+      <default>1.0</default>
+      <summary>Volume adjustment rate multiplier</summary>
+    </key>
+    <key name="brightness-speed" type="d">
+      <default>1.0</default>
+      <summary>Brightness adjustment rate multiplier</summary>
+    </key>
+
+    <!-- Behavior Options -->
+    <key name="cyclic-workspaces" type="b">
+      <default>true</default>
+      <summary>Wrap around when switching workspaces</summary>
+    </key>
+    <key name="allow-minimize" type="b">
+      <default>true</default>
+      <summary>Allow swiping down to minimize window</summary>
+    </key>
+    <key name="allow-fullscreen" type="b">
+      <default>true</default>
+      <summary>Allow swiping up to fullscreen already-maximized window</summary>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,16 @@
+# Build and release artifacts
+build/
+*.shell-extension.zip
+gschemas.compiled
+schemas/gschemas.compiled
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# OS generated files
+.DS_Store
+*~
+.#*
