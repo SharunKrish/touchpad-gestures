@@ -5,6 +5,18 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { showOsd } from './osd.js';
 
+function isMaximized(window) {
+    return window.is_maximized?.() ?? window.get_maximized() === Meta.MaximizeFlags.BOTH;
+}
+
+function setMaximized(window, maximize) {
+    const method = maximize ? 'maximize' : 'unmaximize';
+    if (typeof window.is_maximized === 'function')
+        window[method]();
+    else
+        window[method](Meta.MaximizeFlags.BOTH);
+}
+
 export class WindowTilingManager {
     constructor() {
         this._preview = new St.Widget({
@@ -82,13 +94,13 @@ export class WindowTilingManager {
             return;
         }
 
-        if (window.get_maximized() === Meta.MaximizeFlags.BOTH) {
+        if (isMaximized(window)) {
             if (allowFullscreen) {
                 window.make_fullscreen();
                 this._showOsd('view-fullscreen-symbolic', 'Fullscreen');
             }
         } else {
-            window.maximize(Meta.MaximizeFlags.BOTH);
+            setMaximized(window, true);
             this._showOsd('view-fullscreen-symbolic', 'Maximized');
         }
         this.hidePreview();
@@ -104,8 +116,8 @@ export class WindowTilingManager {
         if (window.is_fullscreen()) {
             window.unmake_fullscreen();
             this._showOsd('view-restore-symbolic', 'Restored');
-        } else if (window.get_maximized() === Meta.MaximizeFlags.BOTH) {
-            window.unmaximize(Meta.MaximizeFlags.BOTH);
+        } else if (isMaximized(window)) {
+            setMaximized(window, false);
             this._showOsd('view-restore-symbolic', 'Restored');
         } else if (allowMinimize && window.can_minimize()) {
             window.minimize();
@@ -131,9 +143,8 @@ export class WindowTilingManager {
         if (window.is_fullscreen()) {
             window.unmake_fullscreen();
         }
-        if (window.get_maximized() === Meta.MaximizeFlags.BOTH) {
-            window.unmaximize(Meta.MaximizeFlags.BOTH);
-        }
+        if (isMaximized(window))
+            setMaximized(window, false);
 
         const halfWidth = Math.floor(workArea.width / 2);
         window.move_to_monitor(monitor);
@@ -159,9 +170,8 @@ export class WindowTilingManager {
         if (window.is_fullscreen()) {
             window.unmake_fullscreen();
         }
-        if (window.get_maximized() === Meta.MaximizeFlags.BOTH) {
-            window.unmaximize(Meta.MaximizeFlags.BOTH);
-        }
+        if (isMaximized(window))
+            setMaximized(window, false);
 
         const halfWidth = Math.floor(workArea.width / 2);
         const rightX = workArea.x + halfWidth;

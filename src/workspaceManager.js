@@ -17,25 +17,17 @@ export class WorkspaceManager {
     }
 
     /**
-     * Switches workspace based on gesture motion direction.
-     * In standard natural physics (GNOME/macOS):
-     * - Swiping fingers LEFT drags the viewport left, revealing the workspace to the RIGHT (+1).
-     * - Swiping fingers RIGHT reveals the workspace to the LEFT (-1).
-     * - Swiping fingers UP reveals the next workspace down (+1).
-     * - Swiping fingers DOWN reveals the previous workspace up (-1).
-     * @param {'left'|'right'|'up'|'down'} direction - Direction fingers moved
+     * Moves one workspace in the direction selected by the action.
+     * @param {1|-1} step - Next or previous workspace
      */
-    switchWorkspace(direction) {
+    switchWorkspace(step) {
         const wsManager = global.workspace_manager;
         const activeWs = wsManager.get_active_workspace();
-        const activeIdx = activeWs.index;
+        const activeIdx = activeWs.index();
         const total = wsManager.n_workspaces;
         if (total <= 1) return;
 
-        let isForward = (direction === 'left' || direction === 'up');
-        if (this._isInverted()) {
-            isForward = !isForward;
-        }
+        const isForward = this._isInverted() ? step < 0 : step > 0;
 
         let targetIdx = activeIdx;
         if (isForward) {

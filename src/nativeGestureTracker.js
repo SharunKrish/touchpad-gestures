@@ -38,6 +38,14 @@ export class NativeGestureTracker {
         }
     }
 
+    handlesWorkspaceSwipe() {
+        return Main.wm?._workspaceAnimation?._swipeTracker?._touchpadGesture?.enabled === true;
+    }
+
+    handlesOverviewSwipe() {
+        return Main.overview?._swipeTracker?._touchpadGesture?.enabled === true;
+    }
+
     _setTrackerDisabled(tracker, disabled) {
         const gesture = tracker._touchpadGesture;
         if (!gesture) return;

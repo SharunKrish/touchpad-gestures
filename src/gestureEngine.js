@@ -71,11 +71,7 @@ export class GestureEngine {
         this._swipeAction = Action.NONE;
 
         // Pinch tracking state
-        this._pinchFingers = 0;
-        this._pinchLastScale = 1.0;
-        this._minPinchScale = 1.0;
-        this._maxPinchScale = 1.0;
-        this._pinchTriggered = false;
+        this._pinchGesture = null;
         this._focusWindow = null;
 
         // Desktop toggle tracking
@@ -150,11 +146,15 @@ export class GestureEngine {
 
         const action = this._settings.get_enum(key);
 
-        // Yield overview to native GNOME tracker when overview is closed and no windows are minimized
-        if (action === Action.OVERVIEW && isVertical && dy < 0) {
-            if (!Main.overview?.visible && !this._hasDesktopMinimizedWindows()) {
-                return Action.NONE;
-            }
+        if (fingers === 3 && !isVertical && this._nativeTracker.handlesWorkspaceSwipe()) {
+            return Action.NONE;
+        }
+
+        // Let GNOME handle its own three-finger opening animation when its tracker is available.
+        if (fingers === 3 && action === Action.OVERVIEW && isVertical && dy < 0 &&
+            this._nativeTracker.handlesOverviewSwipe() &&
+            !Main.overview?.visible && !this._hasDesktopMinimizedWindows()) {
+            return Action.NONE;
         }
 
         return action;
@@ -271,6 +271,9 @@ export class GestureEngine {
     _handleSwipeEnd() {
         if (!this._dominantAxis || this._swipeAction === Action.NONE) return false;
 
+        if (this._swipeAction === Action.VOLUME_CONTROL || this._swipeAction === Action.BRIGHTNESS_CONTROL)
+            return true;
+
         const isVertical = this._dominantAxis === 'vertical';
         const dist = isVertical ? Math.abs(this._cumDy) : Math.abs(this._cumDx);
 
@@ -308,73 +311,49 @@ export class GestureEngine {
     // ==========================================
     _handlePinchEvent(event) {
         const phase = event.get_gesture_phase();
-        const fingers = event.get_touchpad_gesture_finger_count();
 
         if (phase === Clutter.TouchpadGesturePhase.BEGIN) {
-            this._pinchFingers = fingers;
-            this._pinchLastScale = 1.0;
-            this._minPinchScale = 1.0;
-            this._maxPinchScale = 1.0;
-            this._pinchTriggered = false;
+            this._resetPinchState();
+            const fingers = event.get_touchpad_gesture_finger_count();
+            if (fingers !== 2 && fingers !== 3 && fingers !== 4)
+                return Clutter.EVENT_PROPAGATE;
+
+            const inAction = this._settings.get_enum(`pinch-${fingers}fg-in`);
+            const outAction = this._settings.get_enum(`pinch-${fingers}fg-out`);
+            if (inAction === Action.NONE && outAction === Action.NONE)
+                return Clutter.EVENT_PROPAGATE;
+
+            this._pinchGesture = {inAction, outAction, triggered: false};
             this._focusWindow = global.display.get_focus_window();
             return Clutter.EVENT_STOP;
         }
 
-        if (phase === Clutter.TouchpadGesturePhase.UPDATE) {
-            const curFingers = event.get_touchpad_gesture_finger_count();
-            if (curFingers > this._pinchFingers) {
-                this._pinchFingers = curFingers;
-            }
+        const gesture = this._pinchGesture;
+        if (!gesture)
+            return Clutter.EVENT_PROPAGATE;
 
-            const inAction = this._settings.get_enum(`pinch-${this._pinchFingers}fg-in`);
-            const outAction = this._settings.get_enum(`pinch-${this._pinchFingers}fg-out`);
-
-            if (inAction === Action.NONE && outAction === Action.NONE) {
-                if (this._pinchFingers === 2) {
-                    return Clutter.EVENT_PROPAGATE;
-                }
-                return Clutter.EVENT_STOP;
-            }
-
+        if (phase === Clutter.TouchpadGesturePhase.UPDATE && !gesture.triggered) {
             const scale = event.get_gesture_pinch_scale();
             const sensitivity = this._settings.get_double('pinch-sensitivity') || 1.0;
             const effectiveScale = 1.0 + ((scale - 1.0) * sensitivity);
 
-            this._minPinchScale = Math.min(this._minPinchScale, scale);
-            this._maxPinchScale = Math.max(this._maxPinchScale, scale);
-
-            if (!this._pinchTriggered) {
-                if (effectiveScale <= PINCH_IN_THRESHOLD && inAction !== Action.NONE) {
-                    this._executeAction(inAction);
-                    this._pinchTriggered = true;
-                } else if (effectiveScale >= PINCH_OUT_THRESHOLD && outAction !== Action.NONE) {
-                    this._executeAction(outAction);
-                    this._pinchTriggered = true;
-                }
+            if (effectiveScale <= PINCH_IN_THRESHOLD && gesture.inAction !== Action.NONE) {
+                gesture.triggered = true;
+                this._executeAction(gesture.inAction);
+            } else if (effectiveScale >= PINCH_OUT_THRESHOLD && gesture.outAction !== Action.NONE) {
+                gesture.triggered = true;
+                this._executeAction(gesture.outAction);
             }
-
-            return Clutter.EVENT_STOP;
         }
 
-        if (phase === Clutter.TouchpadGesturePhase.END) {
+        if (phase === Clutter.TouchpadGesturePhase.END || phase === Clutter.TouchpadGesturePhase.CANCEL)
             this._resetPinchState();
-            return Clutter.EVENT_STOP;
-        }
 
-        if (phase === Clutter.TouchpadGesturePhase.CANCEL) {
-            this._resetPinchState();
-            return Clutter.EVENT_PROPAGATE;
-        }
-
-        return Clutter.EVENT_PROPAGATE;
+        return Clutter.EVENT_STOP;
     }
 
     _resetPinchState() {
-        this._pinchFingers = 0;
-        this._pinchLastScale = 1.0;
-        this._minPinchScale = 1.0;
-        this._maxPinchScale = 1.0;
-        this._pinchTriggered = false;
+        this._pinchGesture = null;
         this._focusWindow = null;
     }
 
@@ -410,11 +389,11 @@ export class GestureEngine {
             }
 
             case Action.WORKSPACE_NEXT:
-                this._workspaceManager.switchWorkspace('right');
+                this._workspaceManager.switchWorkspace(1);
                 return true;
 
             case Action.WORKSPACE_PREV:
-                this._workspaceManager.switchWorkspace('left');
+                this._workspaceManager.switchWorkspace(-1);
                 return true;
 
             case Action.WINDOW_SWITCHING:
